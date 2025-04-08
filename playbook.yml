@@ -1,0 +1,133 @@
+---
+- name: Base configuration for all servers
+  hosts: all
+  become: yes
+  vars_files:
+    - vars/ssh_keys.yml
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Install essential packages
+      apt:
+        name: ["sudo", "curl", "ufw", "software-properties-common"]
+        state: latest
+
+    - name: Create devops user
+      user:
+        name: devops
+        state: present
+        groups: sudo
+        shell: /bin/bash
+        create_home: yes
+        append: yes
+
+    - name: Deploy SSH key
+      ansible.posix.authorized_key:
+        user: devops
+        state: present
+        key: "{{ ssh_public_key }}"
+
+    - name: Configure secure sudo access
+      copy:
+        dest: /etc/sudoers.d/devops
+        content: |
+          devops ALL=(ALL) NOPASSWD: /usr/bin/apt, /usr/bin/systemctl, /usr/sbin/nginx
+          devops ALL=(ALL) NOPASSWD: /usr/sbin/ufw *
+          devops ALL=(ALL) NOPASSWD: /usr/bin/psql *
+        validate: "visudo -cf %s"
+
+    - name: Set default locale
+      locale_gen:
+        name: en_US.UTF-8
+        state: present
+
+- name: Configure Nginx
+  hosts: nginx
+  become: yes
+  handlers:
+    - name: restart nginx
+      service:
+        name: nginx
+        state: restarted
+
+  tasks:
+    - name: Install Nginx
+      apt:
+        name: nginx
+        state: latest
+
+    - name: Configure firewall
+      ufw:
+        state: enabled
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - "22"
+        - "80"
+
+    - name: Ensure Nginx service
+      service:
+        name: nginx
+        state: started
+        enabled: yes
+
+    - name: Verify Nginx
+      uri:
+        url: http://localhost
+        return_content: yes
+      register: nginx_check
+      until: nginx_check.status == 200
+      retries: 5
+      delay: 3
+
+- name: Configure PostgreSQL
+  hosts: postgresql
+  become: yes
+  handlers:
+    - name: restart postgresql
+      service:
+        name: postgresql
+        state: restarted
+
+  tasks:
+    - name: Install PostgreSQL
+      apt:
+        name: postgresql
+        state: latest
+
+    - name: Configure firewall for PostgreSQL
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - "22"
+        - "5432"
+
+    - name: Ensure PostgreSQL service
+      service:
+        name: postgresql
+        state: started
+        enabled: yes
+
+    - name: Configure PostgreSQL locale
+      lineinfile:
+        path: /etc/postgresql/16/main/postgresql.conf
+        regexp: "^lc_messages"
+        line: "lc_messages = 'en_US.UTF-8'"
+        state: present
+      notify: restart postgresql
+
+    - name: Verify PostgreSQL
+      shell: |
+        sudo -u postgres psql -c '\l'
+      register: pg_test
+      changed_when: false
+      until: pg_test.rc == 0
+      retries: 5
+      delay: 3
