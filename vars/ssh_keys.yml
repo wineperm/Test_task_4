@@ -1,2 +1,2 @@
 ---
-ssh_public_key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP9/6wEr+iJV2C1qDPyrstOrDJKxkh0FeCSg5M63D5gh leo_kraska@mail.ru
+ssh_public_key: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIP9/6wEr+iJV2C1qDPyrstOrDJKxkh0FeCSg5M63D5gh leo_kraska@mail.ru # например, можно зашифровать с помощью Ansible Vault
